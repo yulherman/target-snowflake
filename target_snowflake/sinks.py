@@ -3,9 +3,6 @@ from __future__ import annotations
 
 import os
 import typing as t
-from urllib.parse import urlparse
-from uuid import uuid4
-
 from singer_sdk.batch import JSONLinesBatcher
 from singer_sdk.helpers._batch import (
     BaseBatchFileEncoding,
@@ -16,6 +13,8 @@ from singer_sdk.helpers._typing import conform_record_data_types
 from singer_sdk.sinks import SQLSink
 from snowflake.sqlalchemy.base import SnowflakeIdentifierPreparer
 from snowflake.sqlalchemy.snowdialect import SnowflakeDialect
+from urllib.parse import urlparse
+from uuid import uuid4
 
 from target_snowflake.connector import SnowflakeConnector
 
@@ -34,12 +33,12 @@ class SnowflakeSink(SQLSink):
     connector_class = SnowflakeConnector
 
     def __init__(  # noqa: PLR0913
-        self,
-        target: PluginBase,
-        stream_name: str,
-        schema: dict,
-        key_properties: list[str] | None,
-        connector: SQLConnector | None = None,
+            self,
+            target: PluginBase,
+            stream_name: str,
+            schema: dict,
+            key_properties: list[str] | None,
+            connector: SQLConnector | None = None,
     ) -> None:
         """Initialize Snowflake Sink."""
         self.target = target
@@ -94,9 +93,9 @@ class SnowflakeSink(SQLSink):
             raise
 
     def conform_name(
-        self,
-        name: str,
-        object_type: str | None = None,
+            self,
+            name: str,
+            object_type: str | None = None,
     ) -> str:
         if object_type and object_type != "column":
             return super().conform_name(name=name, object_type=object_type)
@@ -106,10 +105,10 @@ class SnowflakeSink(SQLSink):
         return name
 
     def bulk_insert_records(
-        self,
-        full_table_name: str,
-        schema: dict,
-        records: t.Iterable[dict[str, t.Any]],
+            self,
+            full_table_name: str,
+            schema: dict,
+            records: t.Iterable[dict[str, t.Any]],
     ) -> int | None:
         """Bulk insert records to an existing destination table.
 
@@ -167,9 +166,9 @@ class SnowflakeSink(SQLSink):
         return BatchConfig.from_dict(raw)
 
     def insert_batch_files_via_internal_stage(
-        self,
-        full_table_name: str,
-        files: t.Sequence[str],
+            self,
+            full_table_name: str,
+            files: t.Sequence[str],
     ) -> None:
         """Process a batch file with the given batch context.
 
@@ -217,9 +216,9 @@ class SnowflakeSink(SQLSink):
                         os.remove(file_path)  # noqa: PTH107
 
     def process_batch_files(
-        self,
-        encoding: BaseBatchFileEncoding,
-        files: t.Sequence[str],
+            self,
+            encoding: BaseBatchFileEncoding,
+            files: t.Sequence[str],
     ) -> None:
         """Process a batch file with the given batch context.
 
@@ -251,3 +250,33 @@ class SnowflakeSink(SQLSink):
         Raises:
             MissingKeyPropertiesError: If record is missing one or more key properties.
         """
+
+    def activate_version(self, new_version: int) -> None:
+        """Bump the active version of the target table.
+
+        Args:
+            new_version: The version number to activate.
+        """
+        # There's nothing to do if the table doesn't exist yet
+        # (which it won't the first time the stream is processed)
+        if not self.connector.table_exists(self.full_table_name):
+            return
+
+        if not self.connector.column_exists(
+                full_table_name=self.full_table_name,
+                column_name=self.version_column_name,
+        ):
+            self.connector.prepare_column(
+                self.full_table_name,
+                self.version_column_name,
+                sql_type=sa.types.Integer(),
+            )
+
+        if self.config.get("hard_delete", False):
+            with self.connector._connect() as conn, conn.begin():  # noqa: SLF001
+                conn.execute(
+                    sa.text(
+                        f"DELETE FROM {self.full_table_name} "  # noqa: S608
+                        f"WHERE {self.version_column_name} <= {new_version}",
+                    ),
+                )
